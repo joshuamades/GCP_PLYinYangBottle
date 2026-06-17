@@ -10,12 +10,15 @@ import { BgVar1Var2PNG } from "../../media/images_BgVar1Var2.png.js";
 import { BgVar3PNG } from "../../media/images_BgVar3.png.js";
 import { BottleGlowPNG } from "../../media/images_BottleGlow.png.js";
 import { BottlePNG } from "../../media/images_Bottle.png.js";
+import { CapPNG } from "../../media/images_Cap.png.js";
 import { CirclePNG } from "../../media/images_Circle.png.js";
 import { ctaPNG } from "../../media/images_cta.png.js";
 import { DownloadButtonPNG } from "../../media/images_DownloadButton.png.js";
 import { logoPNG } from "../../media/images_logo.png.js";
 import { Variation1TextPNG } from "../../media/images_Variation1Text.png.js";
+import { YangDropletPNG } from "../../media/images_YangDroplet.png.js";
 import { YangEmptyDropletPNG } from "../../media/images_YangEmptyDroplet.png.js";
+import { YingDropletPNG } from "../../media/images_YingDroplet.png.js";
 import { YingYangBottlePNG } from "../../media/images_YingYangBottle.png.js";
 
 // Liquid fill images
@@ -208,7 +211,10 @@ export class Preloader extends Phaser.Scene {
     this.load.image("bgLandscape", BgVar1Var2PNG);
     this.load.image("gemsCollection", YingYangBottlePNG);
     this.load.image("bottleGlow", BottleGlowPNG);
+    this.load.image("bottleCap", CapPNG);
+    this.load.image("yangDroplet", YangDropletPNG);
     this.load.image("yangEmptyDroplet", YangEmptyDropletPNG);
+    this.load.image("yingDroplet", YingDropletPNG);
     this.load.image("topTextEndcard", Variation1TextPNG);
     this.load.image("slide1", AppIconPNG);
     this.load.image("slide2", BottlePNG);
