@@ -1,0 +1,39 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <style>
+      html,
+      body {
+        width: 100%;
+        height: 100%;
+        margin: 0;
+        overflow: hidden;
+        background: #111;
+      }
+
+      video {
+        width: 100vw;
+        height: 100vh;
+        object-fit: contain;
+        display: block;
+      }
+    </style>
+  </head>
+  <body>
+    <video id="video" muted playsinline preload="auto"></video>
+    <script>
+      const video = document.getElementById("video");
+      const params = new URLSearchParams(window.location.search);
+      const time = Number(params.get("t") || "0");
+
+      video.src = "../2026-06-18 05-05-16.mp4";
+      video.addEventListener("loadedmetadata", () => {
+        video.currentTime = Math.min(Math.max(time, 0), video.duration || time);
+      });
+      video.addEventListener("seeked", () => {
+        document.body.dataset.ready = "true";
+      });
+    </script>
+  </body>
+</html>

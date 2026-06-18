@@ -6,6 +6,7 @@ export class GameLayout {
     this.background = elements.background;
     this.logo = elements.logo;
     this.topText = elements.topText;
+    this.yingYangBottle = elements.yingYangBottle;
     this.downloadButton = elements.downloadButton;
     this.downloadButtonTween = null;
     this.viewportLayoutTimeout = null;
@@ -159,6 +160,10 @@ export class GameLayout {
       );
     }
 
+    if (this.yingYangBottle) {
+      const targetWidth = Phaser.Math.Clamp(width * 0.28, 220, 440);
+      this.applyYingYangBottleLayout(width * 0.5, height * 0.5, targetWidth);
+    }
   }
 
   applyPortraitLayout(width, height, centerX) {
@@ -184,6 +189,10 @@ export class GameLayout {
       this.applyTopTextLayout(centerX, height * 0.15, targetWidth, 0.5);
     }
 
+    if (this.yingYangBottle) {
+      const targetWidth = Phaser.Math.Clamp(width * 0.7, 230, 420);
+      this.applyYingYangBottleLayout(centerX, height * 0.5, targetWidth);
+    }
   }
 
   applyTopTextLayout(x, y, targetWidth, originX) {
@@ -194,6 +203,16 @@ export class GameLayout {
     this.topText.setPosition(x, y);
     this.topText.setScale(baseScale);
     this.topText.setDepth(2);
+  }
+
+  applyYingYangBottleLayout(x, y, targetWidth) {
+    const sourceWidth = Math.max(this.yingYangBottle.width || 1, 1);
+    const baseScale = Math.max(targetWidth, 1) / sourceWidth;
+
+    this.yingYangBottle.setOrigin(0.5);
+    this.yingYangBottle.setPosition(x, y);
+    this.yingYangBottle.setScale(baseScale);
+    this.yingYangBottle.setDepth(1);
   }
 
   applyDownloadButtonLayout(x, y, targetWidth, pulseAmount) {

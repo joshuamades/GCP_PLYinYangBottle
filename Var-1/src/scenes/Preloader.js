@@ -19,6 +19,7 @@ import { Variation1TextPNG } from "../../media/images_Variation1Text.png.js";
 import { YangDropletPNG } from "../../media/images_YangDroplet.png.js";
 import { YangEmptyDropletPNG } from "../../media/images_YangEmptyDroplet.png.js";
 import { YingDropletPNG } from "../../media/images_YingDroplet.png.js";
+import { YingEmptyDropletPNG } from "../../media/images_YingEmptyDroplet.png.js";
 import { YingYangBottlePNG } from "../../media/images_YingYangBottle.png.js";
 
 // Liquid fill images
@@ -215,10 +216,12 @@ export class Preloader extends Phaser.Scene {
     this.load.image("yangDroplet", YangDropletPNG);
     this.load.image("yangEmptyDroplet", YangEmptyDropletPNG);
     this.load.image("yingDroplet", YingDropletPNG);
+    this.load.image("yingEmptyDroplet", YingEmptyDropletPNG);
     this.load.image("topTextEndcard", Variation1TextPNG);
     this.load.image("slide1", AppIconPNG);
     this.load.image("slide2", BottlePNG);
     this.load.image("slide3", CirclePNG);
+    this.load.image("circle", CirclePNG);
     this.load.image("slide4", BgVar3PNG);
 
     // Liquid fill images

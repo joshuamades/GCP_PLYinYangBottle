@@ -1,5 +1,11 @@
 const DEFAULT_MAX_LAYERS = 4;
 const DEFAULT_DEPTH = 4;
+const POUR_TEXTURE_PREFIX = "liquid-pouring";
+const POUR_LIQUID_WIDTH_SCALE = 1.85;
+const POUR_LIQUID_HEIGHT_TO_WIDTH = 0.774;
+const POUR_LIQUID_OFFSET_X = 0;
+const POUR_LIQUID_OFFSET_Y = .1;
+const POUR_LIQUID_ROTATION_OFFSET = -60;
 
 export class LiquidStack {
   constructor(scene, bottle, options = {}) {
@@ -14,6 +20,7 @@ export class LiquidStack {
     this.liquidHeight = options.liquidHeight || 118;
     this.contents = [];
     this.layers = [];
+    this.isPouring = false;
 
     this.createLayerPool();
   }
@@ -56,7 +63,7 @@ export class LiquidStack {
 
       this.contents.push(color);
       const stage = index + 1;
-      layer.setTexture(`${this.texturePrefix}-${color}-${stage}`);
+      layer.setTexture(this.getTextureKey(color, stage));
       layer.setVisible(true);
     }
 
@@ -113,26 +120,67 @@ export class LiquidStack {
       }
 
       const stage = index + 1;
-      layer.setTexture(`${this.texturePrefix}-${color}-${stage}`);
+      layer.setTexture(this.getTextureKey(color, stage));
       layer.setVisible(true);
     }
 
     this.layout();
   }
 
+  setPouring(isPouring) {
+    this.isPouring = Boolean(isPouring);
+    this.renderContents();
+    return this;
+  }
+
+  getTextureKey(color, stage) {
+    const prefix = this.isPouring ? POUR_TEXTURE_PREFIX : this.texturePrefix;
+
+    return `${prefix}-${color}-${stage}`;
+  }
+
   layout() {
     const bottleBounds = getBottleBounds(this.bottle);
-    const x = bottleBounds.centerX + this.sd(this.offsetX);
-    const y = bottleBounds.centerY + this.sd(this.offsetY);
-    const liquidWidth = this.sd(this.liquidWidth);
-    const liquidHeight = this.sd(this.liquidHeight);
+    const bottleAngle = this.bottle?.angle || 0;
+    const angle = (bottleAngle * Math.PI) / 180;
+    const pourOffsetX = this.isPouring
+      ? (this.bottle?.displayWidth || this.sd(this.liquidWidth)) *
+        POUR_LIQUID_OFFSET_X
+      : 0;
+    const pourOffsetY = this.isPouring
+      ? (this.bottle?.displayHeight || this.sd(this.liquidHeight)) *
+        POUR_LIQUID_OFFSET_Y
+      : 0;
+    const x =
+      bottleBounds.centerX +
+      this.sd(this.offsetX) +
+      pourOffsetX * Math.cos(angle) -
+      pourOffsetY * Math.sin(angle);
+    const y =
+      bottleBounds.centerY +
+      this.sd(this.offsetY) +
+      pourOffsetX * Math.sin(angle) +
+      pourOffsetY * Math.cos(angle);
+    const liquidWidth = this.isPouring
+      ? (this.bottle?.displayWidth || this.sd(this.liquidWidth)) *
+        POUR_LIQUID_WIDTH_SCALE
+      : this.sd(this.liquidWidth);
+    const liquidHeight = this.isPouring
+      ? liquidWidth * POUR_LIQUID_HEIGHT_TO_WIDTH
+      : this.sd(this.liquidHeight);
 
     for (let index = 0; index < this.maxLayers; index += 1) {
       const layer = this.layers[index];
 
       layer.setPosition(x, y);
       layer.setDisplaySize(liquidWidth, liquidHeight);
-      layer.setAngle(this.bottle?.angle || 0);
+      const pouringRotationOffset =
+        this.isPouring && bottleAngle < 0
+          ? -POUR_LIQUID_ROTATION_OFFSET
+          : POUR_LIQUID_ROTATION_OFFSET;
+
+      layer.setAngle(bottleAngle + (this.isPouring ? pouringRotationOffset : 0));
+      layer.setFlipX(this.isPouring && bottleAngle < 0);
     }
 
     return this;
@@ -192,5 +240,5 @@ function getBottleBounds(bottle) {
 }
 
 function clampDepth(depth) {
-  return Math.min(Math.max(depth, 1), 10);
+  return Math.min(Math.max(depth, -10), 30);
 }
