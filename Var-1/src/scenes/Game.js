@@ -29,13 +29,14 @@ export class Game extends Phaser.Scene {
     this.startBackgroundMusic();
 
     this.background = this.add.image(0, 0, "bgLandscape").setOrigin(0.5);
-    this.logo = this.add.image(0, 0, "logo");
+    this.logo = this.add.image(0, 0, "logo").setInteractive({ useHandCursor: true });
     this.topText = this.add.image(0, 0, "topTextEndcard");
     this.downloadButton = this.add
       .image(0, 0, "downloadButton")
       .setInteractive({ useHandCursor: true });
 
     this.downloadButton.on("pointerdown", onCtaPressed);
+    this.logo.on("pointerdown", onCtaPressed);
 
     this.layout = new GameLayout(this, {
       background: this.background,
@@ -50,6 +51,7 @@ export class Game extends Phaser.Scene {
 
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
       this.downloadButton.off("pointerdown", onCtaPressed);
+      this.logo.off("pointerdown", onCtaPressed);
       this.backgroundMusic?.stop();
       this.backgroundMusic?.destroy();
       this.layout.destroy();

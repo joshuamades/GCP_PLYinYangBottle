@@ -8,7 +8,7 @@ const POUR_LIQUID_OFFSET_Y = .1;
 const POUR_LIQUID_ROTATION_OFFSET = -60;
 const STAGE_REVEAL_DURATION = 320;
 const STAGE_REVEAL_RISE = 0.06;
-const STAGE_FILL_START_PROGRESS = 0.55;
+const STAGE_FILL_START_PROGRESS = 0.78;
 const STAGE_FILL_EASE_POWER = 1.8;
 const STAGE_DRAIN_END_PROGRESS = 1;
 const STAGE_DRAIN_EASE_POWER = 2.2;
@@ -175,6 +175,7 @@ export class LiquidStack {
       update: (progress) => {
         this.updateStreamDrainReveal(layerIndex, progress);
       },
+      getRemainingProgress: (progress) => this.getStreamDrainRemainingProgress(progress),
       complete: () => {
         this.completeStreamDrainReveal(layerIndex);
       },
@@ -263,16 +264,21 @@ export class LiquidStack {
       return;
     }
 
-    const drainProgress = Math.pow(
-      clamp(progress / STAGE_DRAIN_END_PROGRESS, 0, 1),
-      STAGE_DRAIN_EASE_POWER,
-    );
-    const remainingProgress = 1 - drainProgress;
+    const remainingProgress = this.getStreamDrainRemainingProgress(progress);
     const cropHeight = Math.max(layer.height * remainingProgress, 1);
     const cropY = layer.height - cropHeight;
 
     layer.setAlpha(remainingProgress > 0.01 ? 1 : 0);
     layer.setCrop(0, cropY, layer.width, cropHeight);
+  }
+
+  getStreamDrainRemainingProgress(progress) {
+    const drainProgress = Math.pow(
+      clamp(progress / STAGE_DRAIN_END_PROGRESS, 0, 1),
+      STAGE_DRAIN_EASE_POWER,
+    );
+
+    return 1 - drainProgress;
   }
 
   completeStreamDrainReveal(index) {

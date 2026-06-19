@@ -31,13 +31,14 @@ export class Game extends Phaser.Scene {
     this.startBackgroundMusic();
 
     this.background = this.add.image(0, 0, "bgLandscape").setOrigin(0.5);
-    this.logo = this.add.image(0, 0, "logo");
+    this.logo = this.add.image(0, 0, "logo").setInteractive({ useHandCursor: true });
     this.topText = this.add.image(0, 0, "topTextEndcard");
     this.downloadButton = this.add
       .image(0, 0, "downloadButton")
       .setInteractive({ useHandCursor: true });
 
     this.downloadButton.on("pointerdown", onCtaPressed);
+    this.logo.on("pointerdown", onCtaPressed);
     this.startEndSceneTimerAfterFirstTouch();
 
     this.layout = new GameLayout(this, {
@@ -53,6 +54,7 @@ export class Game extends Phaser.Scene {
 
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
       this.downloadButton.off("pointerdown", onCtaPressed);
+      this.logo.off("pointerdown", onCtaPressed);
       this.endSceneTimerEvent?.remove(false);
       this.endSceneTimerEvent = null;
       this.backgroundMusic?.stop();
