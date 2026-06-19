@@ -22,6 +22,7 @@ export class EndScene extends Phaser.Scene {
   create() {
     this.adNetworkSetup();
     this.disableGameInput();
+    this.redirectToStoreBeforeEndScene();
 
     this.overlay = this.add.rectangle(0, 0, 1, 1, 0x000000, 0.75);
     this.overlay.setOrigin(0);
@@ -106,6 +107,15 @@ export class EndScene extends Phaser.Scene {
 
     gameScene.input.enabled = this.previousGameInputEnabled;
     this.previousGameInputEnabled = undefined;
+  }
+
+  redirectToStoreBeforeEndScene() {
+    if (this.hasRedirectedToStore) {
+      return;
+    }
+
+    this.hasRedirectedToStore = true;
+    onCtaPressed();
   }
 
   playSceneFadeIn(duration = 420) {

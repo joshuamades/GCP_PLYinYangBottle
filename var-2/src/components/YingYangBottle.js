@@ -23,7 +23,6 @@ const POUR_STREAM_DURATION = 1800;
 const POUR_STREAM_PROGRESS_BOOST = 0.14;
 const POUR_STREAM_VERTICAL_BEND = 0.08;
 const POUR_STREAM_WOBBLE_AMOUNT = 0.18;
-const POUR_STREAM_HIGHLIGHT_LENGTH = 0.16;
 const YIN_YANG_STREAM_EXTRA_LENGTH = 0.08;
 const BOTTLE_STREAM_EXTRA_LENGTH = 0.08;
 const REFERENCE_CENTER_STREAM_HEIGHT = 687;
@@ -1002,10 +1001,10 @@ export class YingYangBottle {
     }
 
     const pourStage = sourceStack.getCount();
+    const sourceStreamDrain = sourceStack.popTopForStreamDrain();
 
     this.stopHandGuide();
-    this.playPouringAnimation(color, sourceBottle, pourStage, () => {
-      sourceStack.popTop();
+    this.playPouringAnimation(color, sourceBottle, pourStage, sourceStreamDrain, () => {
       this.addYinYangPour(color);
       this.updateYinYangLiquidTexture(color);
       this.selectedSourceStack = null;
@@ -1059,10 +1058,10 @@ export class YingYangBottle {
     }
 
     const pourStage = sourceStack.getCount();
+    const sourceStreamDrain = sourceStack.popTopForStreamDrain();
 
     this.stopHandGuide();
-    this.playBottlePourAnimation(color, sourceBottle, targetBottle, pourStage, (targetAlreadyFilled = false) => {
-      sourceStack.popTop();
+    this.playBottlePourAnimation(color, sourceBottle, targetBottle, pourStage, sourceStreamDrain, (targetAlreadyFilled = false) => {
       if (!targetAlreadyFilled) {
         targetStack.pushColor(color);
       }
@@ -1387,7 +1386,7 @@ export class YingYangBottle {
     });
   }
 
-  playPouringAnimation(color, sourceBottle, pourStage, onComplete) {
+  playPouringAnimation(color, sourceBottle, pourStage, sourceStreamDrain, onComplete) {
     this.isPouring = true;
     this.pouringTween?.stop();
     this.stopPourSfx();
@@ -1456,7 +1455,7 @@ export class YingYangBottle {
                 this.isPouring = false;
               },
             });
-          });
+          }, null, null, sourceStreamDrain);
           return;
         }
         this.startYinYangBubbles(color, endX, endY);
@@ -1476,12 +1475,12 @@ export class YingYangBottle {
               onComplete?.();
             },
           });
-        });
+        }, null, null, sourceStreamDrain);
       },
     });
   }
 
-  playBottlePourAnimation(color, sourceBottle, targetBottle, pourStage, onComplete) {
+  playBottlePourAnimation(color, sourceBottle, targetBottle, pourStage, sourceStreamDrain, onComplete) {
     this.isPouring = true;
     this.pouringTween?.stop();
     this.stopPourSfx();
@@ -1563,6 +1562,7 @@ export class YingYangBottle {
             },
             targetBottle,
             targetStreamFill,
+            sourceStreamDrain,
           );
           return;
         }
@@ -1592,6 +1592,7 @@ export class YingYangBottle {
           },
           targetBottle,
           targetStreamFill,
+          sourceStreamDrain,
         );
       },
     });
@@ -1739,6 +1740,7 @@ export class YingYangBottle {
     onComplete,
     targetBottle = null,
     targetStreamFill = null,
+    sourceStreamDrain = null,
   ) {
     const stageBottomPoint = this.getBottleCurrentStageBottomPoint(
       sourceBottle,
@@ -1782,10 +1784,12 @@ export class YingYangBottle {
           targetBottle,
         });
         targetStreamFill?.update(t);
+        sourceStreamDrain?.update(t);
       },
       onComplete: () => {
         this.pouringLine.clear();
         this.stopPourSfx();
+        sourceStreamDrain?.complete();
         targetStreamFill?.complete();
         this.pouringTween = null;
         onComplete?.();
@@ -1877,8 +1881,7 @@ export class YingYangBottle {
     const animatedPoints = this.getAnimatedStreamPoints(streamPoints, lineWidth);
 
     this.pouringLine.lineStyle(lineWidth, lineColor, 0.95);
-    const visiblePoints = this.drawProgressiveLine(animatedPoints, progress);
-    this.drawStreamHighlight(visiblePoints, lineWidth, progress);
+    this.drawProgressiveLine(animatedPoints, progress);
   }
 
   getBottleToBottleStreamPoints(startX, startY, endX, endY) {
@@ -2213,36 +2216,6 @@ export class YingYangBottle {
         y: point.y + (dx / length) * offset,
       };
     });
-  }
-
-  drawStreamHighlight(points, lineWidth, progress) {
-    if (points.length < 2) {
-      return;
-    }
-
-    const highlightStart = Phaser.Math.Clamp(
-      progress - POUR_STREAM_HIGHLIGHT_LENGTH,
-      0,
-      1,
-    );
-    const highlightEnd = Phaser.Math.Clamp(progress, 0, 1);
-    const highlightPoints = this.slicePolylineByProgress(
-      points,
-      highlightStart,
-      highlightEnd,
-    );
-
-    if (highlightPoints.length < 2) {
-      return;
-    }
-
-    this.pouringLine.lineStyle(Math.max(lineWidth * 0.28, 2), 0xffffff, 0.45);
-    this.pouringLine.beginPath();
-    this.pouringLine.moveTo(highlightPoints[0].x, highlightPoints[0].y);
-    for (let index = 1; index < highlightPoints.length; index += 1) {
-      this.pouringLine.lineTo(highlightPoints[index].x, highlightPoints[index].y);
-    }
-    this.pouringLine.strokePath();
   }
 
   slicePolylineByProgress(points, startProgress, endProgress) {

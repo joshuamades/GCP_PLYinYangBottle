@@ -10,6 +10,8 @@ const STAGE_REVEAL_DURATION = 320;
 const STAGE_REVEAL_RISE = 0.06;
 const STAGE_FILL_START_PROGRESS = 0.55;
 const STAGE_FILL_EASE_POWER = 1.8;
+const STAGE_DRAIN_END_PROGRESS = 1;
+const STAGE_DRAIN_EASE_POWER = 2.2;
 
 export class LiquidStack {
   constructor(scene, bottle, options = {}) {
@@ -148,6 +150,37 @@ export class LiquidStack {
     };
   }
 
+  popTopForStreamDrain() {
+    if (!this.contents.length) {
+      return null;
+    }
+
+    const layerIndex = this.contents.length - 1;
+    const color = this.contents[layerIndex];
+    const layer = this.layers[layerIndex];
+
+    if (!layer) {
+      return null;
+    }
+
+    this.scene.tweens.killTweensOf(layer);
+    layer.setAlpha(1);
+    layer.setVisible(true);
+    layer.setCrop();
+
+    return {
+      layer,
+      index: layerIndex,
+      color,
+      update: (progress) => {
+        this.updateStreamDrainReveal(layerIndex, progress);
+      },
+      complete: () => {
+        this.completeStreamDrainReveal(layerIndex);
+      },
+    };
+  }
+
   renderContents() {
     for (let index = 0; index < this.maxLayers; index += 1) {
       const color = this.contents[index];
@@ -221,6 +254,36 @@ export class LiquidStack {
 
     layer.setAlpha(1);
     layer.setCrop();
+  }
+
+  updateStreamDrainReveal(index, progress) {
+    const layer = this.layers[index];
+
+    if (!layer?.visible) {
+      return;
+    }
+
+    const drainProgress = Math.pow(
+      clamp(progress / STAGE_DRAIN_END_PROGRESS, 0, 1),
+      STAGE_DRAIN_EASE_POWER,
+    );
+    const remainingProgress = 1 - drainProgress;
+    const cropHeight = Math.max(layer.height * remainingProgress, 1);
+    const cropY = layer.height - cropHeight;
+
+    layer.setAlpha(remainingProgress > 0.01 ? 1 : 0);
+    layer.setCrop(0, cropY, layer.width, cropHeight);
+  }
+
+  completeStreamDrainReveal(index) {
+    const layer = this.layers[index];
+
+    if (layer) {
+      layer.setAlpha(1);
+      layer.setCrop();
+    }
+
+    this.popTop();
   }
 
   setPouring(isPouring) {
