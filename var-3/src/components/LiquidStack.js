@@ -182,6 +182,63 @@ export class LiquidStack {
     };
   }
 
+  popTopBatchForStreamDrain(count = 1) {
+    if (!this.contents.length) {
+      return null;
+    }
+
+    const safeCount = clamp(Math.round(count), 1, this.contents.length);
+    const endIndex = this.contents.length - 1;
+    const startIndex = endIndex - safeCount + 1;
+    const color = this.contents[endIndex];
+    const displayLayer = this.layers[endIndex];
+    const hiddenLayers = [];
+    let currentProgress = 0;
+
+    const applyBatchVisual = () => {
+      for (let index = startIndex; index <= endIndex; index += 1) {
+        const layer = this.layers[index];
+        if (!layer) {
+          continue;
+        }
+
+        this.scene.tweens.killTweensOf(layer);
+        if (index === endIndex) {
+          layer.setTexture(this.getTextureKey(color, endIndex + 1));
+          layer.setAlpha(1);
+          layer.setVisible(true);
+        } else {
+          layer.setAlpha(0);
+          layer.setVisible(false);
+          if (!hiddenLayers.includes(layer)) {
+            hiddenLayers.push(layer);
+          }
+        }
+        layer.setCrop();
+      }
+    };
+
+    applyBatchVisual();
+
+    return {
+      layer: displayLayer,
+      hiddenLayers,
+      count: safeCount,
+      refresh: () => {
+        applyBatchVisual();
+        this.updateStreamBatchDrainReveal(displayLayer, currentProgress);
+      },
+      update: (progress) => {
+        currentProgress = progress;
+        this.updateStreamBatchDrainReveal(displayLayer, progress);
+      },
+      getRemainingProgress: (progress) => this.getStreamDrainRemainingProgress(progress),
+      complete: () => {
+        this.completeStreamBatchDrainReveal(safeCount);
+      },
+    };
+  }
+
   renderContents() {
     for (let index = 0; index < this.maxLayers; index += 1) {
       const color = this.contents[index];
@@ -272,6 +329,19 @@ export class LiquidStack {
     layer.setCrop(0, cropY, layer.width, cropHeight);
   }
 
+  updateStreamBatchDrainReveal(layer, progress) {
+    if (!layer?.visible) {
+      return;
+    }
+
+    const remainingProgress = this.getStreamDrainRemainingProgress(progress);
+    const cropHeight = Math.max(layer.height * remainingProgress, 1);
+    const cropY = layer.height - cropHeight;
+
+    layer.setAlpha(remainingProgress > 0.01 ? 1 : 0);
+    layer.setCrop(0, cropY, layer.width, cropHeight);
+  }
+
   getStreamDrainRemainingProgress(progress) {
     const drainProgress = Math.pow(
       clamp(progress / STAGE_DRAIN_END_PROGRESS, 0, 1),
@@ -290,6 +360,13 @@ export class LiquidStack {
     }
 
     this.popTop();
+  }
+
+  completeStreamBatchDrainReveal(count) {
+    const safeCount = clamp(Math.round(count), 1, this.contents.length);
+
+    this.contents.splice(this.contents.length - safeCount, safeCount);
+    this.renderContents();
   }
 
   setPouring(isPouring) {
