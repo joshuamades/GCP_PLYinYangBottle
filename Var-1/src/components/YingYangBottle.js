@@ -16,7 +16,7 @@ const YIN_YANG_LEFT_DROPLET_START_STAGE = 4;
 const YIN_YANG_LEFT_DROPLET_COVERED_STAGE = 6;
 const YIN_YANG_RIGHT_DROPLET_START_STAGE = 11;
 const YIN_YANG_RIGHT_DROPLET_COVERED_STAGE = 14;
-const DROPLET_FILL_ANIMATION_DURATION = 420;
+const DROPLET_FILL_ANIMATION_DURATION = 1000;
 const HOLD_POURING_POSE_FOR_TUNING = false;
 const POUR_TILT_ANGLE = 110;
 const POUR_TILT_BY_STAGE = {
@@ -30,6 +30,7 @@ const POUR_STREAM_DURATION = 1800;
 const BOTTLE_TO_BOTTLE_MOVE_DURATION = 240;
 const BOTTLE_TO_BOTTLE_RETURN_DURATION = 240;
 const POUR_STREAM_PROGRESS_BOOST = 0.14;
+const YIN_YANG_STREAM_PROGRESS_BOOST = 0.45;
 const POUR_STREAM_VERTICAL_BEND = 0.08;
 const POUR_STREAM_WOBBLE_AMOUNT = 0.04;
 const YIN_YANG_STREAM_EXTRA_LENGTH = 0.08;
@@ -42,10 +43,28 @@ const CENTER_LIQUID_HEIGHT_PULSE = 0.006;
 const CENTER_LIQUID_ALPHA_PULSE = 0.05;
 const CENTER_LIQUID_POUR_WAVE_MULTIPLIER = 3.2;
 const CENTER_LIQUID_POUR_WAVE_SPEED_MULTIPLIER = 1.65;
-const CENTER_LIQUID_REVEAL_DURATION = 320;
+const CENTER_LIQUID_POUR_WAVE_X = 0.006;
+const CENTER_LIQUID_POUR_WAVE_ANGLE = 1.6;
+const CENTER_LIQUID_REVEAL_DURATION = 2200;
 const CENTER_LIQUID_REVEAL_RISE = 0.025;
-const CENTER_LIQUID_REVEAL_START_DELAY = 800;
+const CENTER_LIQUID_REVEAL_START_DELAY = 0;
 const CENTER_LIQUID_REVEAL_HOLD_PROGRESS = 0;
+const CENTER_LIQUID_REVEAL_CROP_OVERLAP = 28;
+const CENTER_LIQUID_REVEAL_CROP_OVERLAP_BELOW = 52;
+const CENTER_LIQUID_REVEAL_MIN_OVERLAP = 18;
+const CENTER_LIQUID_REVEAL_MIN_OVERLAP_BELOW = 24;
+const CENTER_LIQUID_STAGE_TOP_Y = {
+  white: {
+    1: 667, 2: 633, 3: 598, 4: 562, 5: 527, 6: 493, 7: 459, 8: 425,
+    9: 387, 10: 354, 11: 320, 12: 286, 13: 252, 14: 218, 15: 185, 16: 152,
+    17: 121,
+  },
+  black: {
+    1: 665, 2: 631, 3: 597, 4: 562, 5: 528, 6: 494, 7: 460, 8: 425,
+    9: 390, 10: 357, 11: 322, 12: 288, 13: 254, 14: 220, 15: 186, 16: 153,
+    17: 121,
+  },
+};
 const CENTER_LIQUID_IDLE_STOP_DELAY = 2000;
 const IDLE_BOTTLE_LIQUID_DEPTH = -3;
 const IDLE_BOTTLE_DEPTH = -2;
@@ -64,6 +83,7 @@ const POURING_BOTTLE_CAP_DEPTH = 21;
 const RECEIVING_BOTTLE_LIQUID_DEPTH = 14;
 const RECEIVING_BOTTLE_DEPTH = 15;
 const RECEIVING_BOTTLE_CAP_DEPTH = 16;
+const CENTER_LIQUID_REVEAL_DEPTH = CENTER_LIQUID_DEPTH + 0.75;
 const HAND_GUIDE_DEPTH = 40;
 const HAND_GUIDE_SCALE = 1;
 const HAND_GUIDE_TARGET_OFFSET_X = 0.08;
@@ -204,6 +224,7 @@ export class YingYangBottle {
     this.centerLiquidRevealTweens = { white: null, black: null };
     this.centerLiquidBaseStageOverride = { white: null, black: null };
     this.centerLiquidRevealStage = { white: null, black: null };
+    this.centerLiquidSingleLayerReveal = { white: false, black: false };
     this.activeYinYangPourColor = null;
     this.yinYangBubbleDelayEvent = null;
     this.yinYangBubbleEvent = null;
@@ -227,12 +248,12 @@ export class YingYangBottle {
     // Performance Refactor: Removed manual WebGL graphics overlays & masks completely
     this.centerWhiteLiquidReveal = this.scene.add.image(0, 0, "liquid-yang-white-3");
     this.centerWhiteLiquidReveal.setOrigin(0.5);
-    this.centerWhiteLiquidReveal.setDepth(CENTER_LIQUID_DEPTH + 0.05);
+    this.centerWhiteLiquidReveal.setDepth(CENTER_LIQUID_REVEAL_DEPTH);
     this.centerWhiteLiquidReveal.setVisible(false);
     
     this.centerBlackLiquidReveal = this.scene.add.image(0, 0, "liquid-yin-black-3");
     this.centerBlackLiquidReveal.setOrigin(0.5);
-    this.centerBlackLiquidReveal.setDepth(CENTER_LIQUID_DEPTH + 0.05);
+    this.centerBlackLiquidReveal.setDepth(CENTER_LIQUID_REVEAL_DEPTH);
     this.centerBlackLiquidReveal.setVisible(false);
     
     this.centerCaps = {
@@ -418,6 +439,7 @@ export class YingYangBottle {
     this.centerLiquidRevealTweens = { white: null, black: null };
     this.centerLiquidBaseStageOverride = { white: null, black: null };
     this.centerLiquidRevealStage = { white: null, black: null };
+    this.centerLiquidSingleLayerReveal = { white: false, black: false };
     this.activeYinYangPourColor = null;
     this.yinYangBubbleDelayEvent = null;
     this.yinYangBubbleEvent = null;
@@ -607,27 +629,67 @@ export class YingYangBottle {
     color,
     revealOverride = null,
   ) {
-    const motion = this.getCenterLiquidMotion(
-      targetHeight,
-      phaseOffset,
-      color,
-      revealOverride,
-    );
+    const isRevealOverlay =
+      liquid === this.centerWhiteLiquidReveal ||
+      liquid === this.centerBlackLiquidReveal;
+    const motion =
+      isRevealOverlay
+        ? (() => {
+            return {
+            x: 0,
+            y: 0,
+            heightScale: 1,
+            alpha: 1,
+            angle: 0,
+            };
+          })()
+        : this.getCenterLiquidMotion(
+            targetHeight,
+            phaseOffset,
+            color,
+            revealOverride,
+          );
 
-    liquid.setPosition(x, y + motion.y);
+    liquid.setPosition(x + motion.x, y + motion.y);
     liquid.setDisplaySize(targetWidth, targetHeight * motion.heightScale);
+    liquid.setAngle(motion.angle);
     this.applyCenterLiquidRevealCrop(liquid, color, revealOverride);
     liquid.setAlpha(motion.alpha);
   }
 
   applyCenterLiquidRevealCrop(liquid, color, revealOverride = null) {
+    const isRevealOverlay =
+      liquid === this.centerWhiteLiquidReveal ||
+      liquid === this.centerBlackLiquidReveal;
+
+    if (
+      !isRevealOverlay &&
+      this.centerLiquidRevealStage[color] &&
+      this.centerLiquidSingleLayerReveal[color]
+    ) {
+      const frame = liquid.frame;
+      const frameWidth = frame?.realWidth || liquid.width || 1;
+      const frameHeight = frame?.realHeight || liquid.height || 1;
+      const cropY = this.getCenterLiquidRevealCropY(color, frameHeight);
+      liquid.setCrop(0, cropY, frameWidth, frameHeight - cropY);
+      return;
+    }
+
+    if (!isRevealOverlay && this.centerLiquidRevealStage[color]) {
+      const frame = liquid.frame;
+      const frameWidth = frame?.realWidth || liquid.width || 1;
+      const frameHeight = frame?.realHeight || liquid.height || 1;
+      liquid.setCrop(0, 0, frameWidth, frameHeight);
+      return;
+    }
+
     const reveal = Phaser.Math.Clamp(
       revealOverride ?? this.centerLiquidReveal[color] ?? 1,
       0,
       1,
     );
     const revealStart = Phaser.Math.Clamp(
-      revealOverride !== null ? 0 : this.centerLiquidRevealStart[color] ?? 0,
+      isRevealOverlay ? this.centerLiquidRevealStart[color] ?? 0 : 0,
       0,
       reveal,
     );
@@ -635,14 +697,124 @@ export class YingYangBottle {
     const frameWidth = frame?.realWidth || liquid.width || 1;
     const frameHeight = frame?.realHeight || liquid.height || 1;
 
-    if (reveal >= 0.995) {
+    if (!isRevealOverlay && reveal >= 0.995) {
       liquid.setCrop(0, 0, frameWidth, frameHeight);
       return;
     }
 
-    const cropHeight = frameHeight * Math.max(reveal - revealStart, 0);
-    const cropY = frameHeight * (1 - reveal);
+    if (isRevealOverlay && this.centerLiquidRevealStage[color]) {
+      const currentStage = this.centerLiquidRevealStage[color];
+      const previousStage = Math.round(
+        (this.centerLiquidRevealStart[color] ?? 0) * YIN_YANG_MAX_FILL_STAGE,
+      );
+      const previousTop = this.getCenterLiquidStageTopY(
+        color,
+        previousStage,
+        frameHeight,
+      );
+      const currentTop = this.getCenterLiquidStageTopY(
+        color,
+        currentStage,
+        frameHeight,
+      );
+      const endReveal = Phaser.Math.Clamp(
+        currentStage / YIN_YANG_MAX_FILL_STAGE,
+        revealStart,
+        1,
+      );
+      const range = Math.max(endReveal - revealStart, 0.001);
+      const progress = Phaser.Math.Clamp((reveal - revealStart) / range, 0, 1);
+
+      if (
+        previousTop !== null &&
+        currentTop !== null &&
+        currentStage > previousStage &&
+        progress > 0.001
+      ) {
+        const animatedTop = Phaser.Math.Linear(previousTop, currentTop, progress);
+        const topOverlap = Phaser.Math.Linear(
+          CENTER_LIQUID_REVEAL_MIN_OVERLAP,
+          CENTER_LIQUID_REVEAL_CROP_OVERLAP,
+          progress,
+        );
+        const cropY = Math.max(
+          animatedTop - topOverlap,
+          0,
+        );
+        liquid.setCrop(0, cropY, frameWidth, frameHeight - cropY);
+        return;
+      }
+    }
+
+    const rawCropHeight = frameHeight * Math.max(reveal - revealStart, 0);
+    const rawCropY = frameHeight * (1 - reveal);
+    if (rawCropHeight <= 0.001) {
+      liquid.setCrop(0, frameHeight, frameWidth, 0);
+      return;
+    }
+    const overlap = isRevealOverlay ? CENTER_LIQUID_REVEAL_CROP_OVERLAP : 0;
+    const overlapBelow = isRevealOverlay
+      ? CENTER_LIQUID_REVEAL_CROP_OVERLAP_BELOW
+      : 0;
+    const cropY = Math.max(rawCropY - overlap, 0);
+    const cropHeight = Math.min(
+      rawCropHeight + overlap + overlapBelow,
+      frameHeight - cropY,
+    );
     liquid.setCrop(0, cropY, frameWidth, cropHeight);
+  }
+
+  getCenterLiquidRevealCropY(color, frameHeight) {
+    const currentStage = this.centerLiquidRevealStage[color];
+    const previousStage = Math.round(
+      (this.centerLiquidRevealStart[color] ?? 0) * YIN_YANG_MAX_FILL_STAGE,
+    );
+    const previousTop = this.getCenterLiquidStageTopY(
+      color,
+      previousStage,
+      frameHeight,
+    );
+    const currentTop = this.getCenterLiquidStageTopY(
+      color,
+      currentStage,
+      frameHeight,
+    );
+    if (
+      previousTop === null ||
+      currentTop === null ||
+      currentStage <= previousStage
+    ) {
+      return 0;
+    }
+
+    const reveal = Phaser.Math.Clamp(this.centerLiquidReveal[color] ?? 1, 0, 1);
+    const revealStart = Phaser.Math.Clamp(
+      this.centerLiquidRevealStart[color] ?? 0,
+      0,
+      reveal,
+    );
+    const endReveal = Phaser.Math.Clamp(
+      currentStage / YIN_YANG_MAX_FILL_STAGE,
+      revealStart,
+      1,
+    );
+    const range = Math.max(endReveal - revealStart, 0.001);
+    const progress = Phaser.Math.Clamp((reveal - revealStart) / range, 0, 1);
+    const animatedTop = Phaser.Math.Linear(previousTop, currentTop, progress);
+    const topOverlap = Phaser.Math.Linear(
+      CENTER_LIQUID_REVEAL_MIN_OVERLAP,
+      CENTER_LIQUID_REVEAL_CROP_OVERLAP,
+      progress,
+    );
+    return Math.max(animatedTop - topOverlap, 0);
+  }
+
+  getCenterLiquidStageTopY(color, stage, frameHeight) {
+    const sourceTop = CENTER_LIQUID_STAGE_TOP_Y[color]?.[stage];
+    if (sourceTop === undefined) {
+      return null;
+    }
+    return sourceTop * (frameHeight / 796);
   }
 
   applyCenterLiquidRevealOverlay(color, centerX, centerY, phaseOffset) {
@@ -650,12 +822,13 @@ export class YingYangBottle {
       color === "white" ? this.centerWhiteLiquidReveal : this.centerBlackLiquidReveal;
     const stage = this.centerLiquidRevealStage[color];
 
-    if (!overlay || !stage) {
+    if (!overlay || !stage || this.centerLiquidSingleLayerReveal[color]) {
       overlay?.setVisible(false);
       return;
     }
 
     overlay.setVisible(true);
+    overlay.setDepth(CENTER_LIQUID_REVEAL_DEPTH);
     overlay.setTexture(
       color === "white"
         ? `liquid-yang-white-${stage}`
@@ -677,9 +850,19 @@ export class YingYangBottle {
   }
 
   getCenterLiquidMotion(targetHeight, phaseOffset, color, revealOverride = null) {
+    if (this.centerLiquidRevealStage[color]) {
+      return {
+        x: 0,
+        y: 0,
+        heightScale: 1,
+        alpha: 1,
+        angle: 0,
+      };
+    }
+
     const isPouringSide = this.activeYinYangPourColor === color;
-    const waveMultiplier = isPouringSide ? CENTER_LIQUID_POUR_WAVE_MULTIPLIER : 1;
-    const speedMultiplier = isPouringSide ? CENTER_LIQUID_POUR_WAVE_SPEED_MULTIPLIER : 1;
+    const waveMultiplier = 1;
+    const speedMultiplier = 1;
     const phase =
       this.scene.time.now *
         CENTER_LIQUID_WAVE_SPEED *
@@ -688,6 +871,7 @@ export class YingYangBottle {
     const reveal = revealOverride ?? this.centerLiquidReveal[color] ?? 1;
 
     return {
+      x: 0,
       y:
         Math.sin(phase) * targetHeight * CENTER_LIQUID_SWAY_Y * waveMultiplier +
         (1 - reveal) * targetHeight * CENTER_LIQUID_REVEAL_RISE,
@@ -701,6 +885,7 @@ export class YingYangBottle {
         (1 -
           (0.5 + Math.sin(phase * 1.15) * 0.5) *
             CENTER_LIQUID_ALPHA_PULSE),
+      angle: 0,
     };
   }
 
@@ -1217,7 +1402,7 @@ export class YingYangBottle {
     return true;
   }
 
-  playYinYangPourSequence(color, sourceStack, sourceBottle, onComplete, isContinuation = false, batchTotal = null, batchIndex = 0, batchDrain = null) {
+  playYinYangPourSequence(color, sourceStack, sourceBottle, onComplete) {
     const targetSide = this.yinYangStacks[color];
 
     if (
@@ -1229,36 +1414,32 @@ export class YingYangBottle {
       return;
     }
 
-    const totalBatchCount =
-      batchTotal ??
-      this.getPourBatchCount(
-        sourceStack,
-        color,
-        YIN_YANG_MAX_FILL_STAGE - targetSide.length,
-      );
-    const pourStage = Math.max(sourceStack.getCount() - batchIndex, 1);
-    const activeBatchDrain =
-      batchDrain ?? sourceStack.popTopBatchForStreamDrain(totalBatchCount);
-    const shouldContinue = batchIndex + 1 < totalBatchCount;
-    const sourceStreamDrain = this.createBatchDrainSegment(
-      activeBatchDrain,
-      batchIndex,
-      totalBatchCount,
-      !shouldContinue,
+    const totalBatchCount = this.getPourBatchCount(
+      sourceStack,
+      color,
+      YIN_YANG_MAX_FILL_STAGE - targetSide.length,
     );
+    const pourStage = sourceStack.getCount();
+    const sourceStreamDrain =
+      sourceStack.popTopBatchForStreamDrain(totalBatchCount, {
+        fadeOnly: true,
+      });
 
     const streamOptions = {
-      keepExistingLine: isContinuation,
-      keepLineOnComplete: shouldContinue,
-      duration: POUR_STREAM_DURATION / Math.max(totalBatchCount, 1),
+      keepExistingLine: false,
+      keepLineOnComplete: false,
+      duration: POUR_STREAM_DURATION,
       syncSourceDrainToStream: true,
+      progressBoost: YIN_YANG_STREAM_PROGRESS_BOOST,
     };
 
-    streamOptions.targetYinYangFill = this.startYinYangStageFill(color);
+    streamOptions.targetYinYangFill = this.startYinYangStageFill(
+      color,
+      totalBatchCount,
+    );
 
-    this.playPouringAnimation(color, sourceBottle, pourStage, sourceStreamDrain, !shouldContinue, streamOptions, () => {
-      this.updateYinYangLiquidTexture(color, false);
-      this.playYinYangPourSequence(color, sourceStack, sourceBottle, onComplete, true, totalBatchCount, batchIndex + 1, activeBatchDrain);
+    this.playPouringAnimation(color, sourceBottle, pourStage, sourceStreamDrain, true, streamOptions, () => {
+      onComplete?.();
     });
   }
 
@@ -1357,7 +1538,7 @@ export class YingYangBottle {
     return true;
   }
 
-  playBottlePourSequence(color, sourceStack, sourceBottle, targetStack, targetBottle, onComplete, isContinuation = false, batchTotal = null, batchIndex = 0, batchDrain = null) {
+  playBottlePourSequence(color, sourceStack, sourceBottle, targetStack, targetBottle, onComplete) {
     if (
       sourceStack?.getTopColor() !== color ||
       !targetStack?.canAccept(color)
@@ -1366,36 +1547,29 @@ export class YingYangBottle {
       return;
     }
 
-    const totalBatchCount =
-      batchTotal ??
-      this.getPourBatchCount(
-        sourceStack,
-        color,
-        targetStack.maxLayers - targetStack.contents.length,
-      );
-    const pourStage = Math.max(sourceStack.getCount() - batchIndex, 1);
-    const activeBatchDrain =
-      batchDrain ?? sourceStack.popTopBatchForStreamDrain(totalBatchCount);
-    const shouldContinue = batchIndex + 1 < totalBatchCount;
-    const sourceStreamDrain = this.createBatchDrainSegment(
-      activeBatchDrain,
-      batchIndex,
-      totalBatchCount,
-      !shouldContinue,
+    const totalBatchCount = this.getPourBatchCount(
+      sourceStack,
+      color,
+      targetStack.maxLayers - targetStack.contents.length,
     );
+    const pourStage = sourceStack.getCount();
+    const sourceStreamDrain =
+      sourceStack.popTopBatchForStreamDrain(totalBatchCount, {
+        fadeOnly: true,
+      });
 
     const streamOptions = {
-      keepExistingLine: isContinuation,
-      keepLineOnComplete: shouldContinue,
+      keepExistingLine: false,
+      keepLineOnComplete: false,
       useActualBottleAngle: true,
       startFromStageOnly: true,
       duration:
         (POUR_STREAM_DURATION -
           BOTTLE_TO_BOTTLE_MOVE_DURATION -
-          BOTTLE_TO_BOTTLE_RETURN_DURATION) /
-        Math.max(totalBatchCount, 1),
-      moveDuration: isContinuation ? 0 : BOTTLE_TO_BOTTLE_MOVE_DURATION,
+          BOTTLE_TO_BOTTLE_RETURN_DURATION),
+      moveDuration: BOTTLE_TO_BOTTLE_MOVE_DURATION,
       returnDuration: BOTTLE_TO_BOTTLE_RETURN_DURATION,
+      batchCount: totalBatchCount,
     };
 
     this.playBottlePourAnimation(
@@ -1404,22 +1578,9 @@ export class YingYangBottle {
       targetBottle,
       pourStage,
       sourceStreamDrain,
-      !shouldContinue,
+      true,
       streamOptions,
-      () => {
-        this.playBottlePourSequence(
-          color,
-          sourceStack,
-          sourceBottle,
-          targetStack,
-          targetBottle,
-          onComplete,
-          true,
-          totalBatchCount,
-          batchIndex + 1,
-          activeBatchDrain,
-        );
-      },
+      onComplete,
     );
   }
 
@@ -1574,7 +1735,7 @@ export class YingYangBottle {
     });
   }
 
-  startYinYangStageFill(color) {
+  startYinYangStageFill(color, count = 1) {
     if (!this.centerLiquidReveal || !(color in this.centerLiquidReveal)) {
       return null;
     }
@@ -1586,10 +1747,16 @@ export class YingYangBottle {
     this.centerLiquidRevealProgress[color] = 1;
     this.centerLiquidBaseStageOverride[color] = null;
     this.centerLiquidRevealStage[color] = null;
+    this.centerLiquidSingleLayerReveal[color] = false;
     this.applyCenterLiquidLayout(this.image.x, this.image.y);
 
     let hasAddedStage = false;
+    let hasStartedReveal = false;
+    let hasCompletedReveal = false;
     let startReveal = 1;
+    let endReveal = 1;
+    let revealStartStage = 1;
+    let revealEndStage = 1;
     const ensureStageAdded = () => {
       if (hasAddedStage) {
         return;
@@ -1597,61 +1764,106 @@ export class YingYangBottle {
 
       hasAddedStage = true;
       const previousStage = this.getYinYangStage(color);
-      this.addYinYangPour(color);
+      const safeCount = Math.max(Math.round(count), 1);
+      for (let index = 0; index < safeCount; index += 1) {
+        this.addYinYangPour(color);
+      }
       const currentStage = this.getYinYangStage(color);
-      this.centerLiquidBaseStageOverride[color] = previousStage;
+      revealStartStage = previousStage;
+      revealEndStage = currentStage;
+      const useSingleLayerReveal = currentStage >= 11;
+      this.centerLiquidSingleLayerReveal[color] = useSingleLayerReveal;
+      this.centerLiquidBaseStageOverride[color] = useSingleLayerReveal
+        ? currentStage
+        : previousStage;
       this.centerLiquidRevealStage[color] = currentStage;
-      startReveal = 0;
+      startReveal = Phaser.Math.Clamp(
+        previousStage / YIN_YANG_MAX_FILL_STAGE,
+        0,
+        0.99,
+      );
+      endReveal = Phaser.Math.Clamp(
+        currentStage / YIN_YANG_MAX_FILL_STAGE,
+        startReveal,
+        1,
+      );
       this.centerLiquidRevealStart[color] = startReveal;
       this.centerLiquidRevealProgress[color] = 0;
       this.centerLiquidReveal[color] = startReveal;
       this.applyCenterLiquidLayout(this.image.x, this.image.y);
     };
 
+    const startRevealTween = () => {
+      if (hasStartedReveal) {
+        return;
+      }
+
+      hasStartedReveal = true;
+      this.centerLiquidRevealTweens[color]?.stop();
+      this.centerLiquidRevealTweens[color] = this.scene.tweens.addCounter({
+        from: 0,
+        to: 1,
+        delay: CENTER_LIQUID_REVEAL_START_DELAY,
+        duration: CENTER_LIQUID_REVEAL_DURATION,
+        ease: "Sine.easeInOut",
+        onStart: () => {
+          ensureStageAdded();
+        },
+        onUpdate: (tween) => {
+          ensureStageAdded();
+          const rawProgress = tween.getValue();
+          const progress = rawProgress * rawProgress * (3 - 2 * rawProgress);
+          const reveal = Phaser.Math.Linear(startReveal, endReveal, progress);
+          this.centerLiquidRevealProgress[color] = progress;
+          this.centerLiquidReveal[color] = reveal;
+          this.applyCenterLiquidLayout(this.image.x, this.image.y);
+          this.updateCenterDropletTextures(
+            {
+              [color]: Phaser.Math.Linear(
+                revealStartStage,
+                revealEndStage,
+                progress,
+              ),
+            },
+            false,
+          );
+        },
+        onComplete: () => {
+          hasCompletedReveal = true;
+          this.centerLiquidReveal[color] = 1;
+          this.centerLiquidRevealStart[color] = 0;
+          this.centerLiquidRevealProgress[color] = 1;
+          this.centerLiquidRevealTweens[color] = null;
+          this.centerLiquidBaseStageOverride[color] = null;
+          this.centerLiquidRevealStage[color] = null;
+          this.centerLiquidSingleLayerReveal[color] = false;
+          this.applyCenterLiquidLayout(this.image.x, this.image.y);
+          this.updateCenterDropletTextures();
+          this.checkSealYinYangBottle(color);
+        },
+      });
+    };
+
     return {
-      update: (progress) => {
-        const delayedProgress = Phaser.Math.Clamp(
-          (progress - CENTER_LIQUID_REVEAL_START_DELAY / POUR_STREAM_DURATION) /
-            (1 - CENTER_LIQUID_REVEAL_START_DELAY / POUR_STREAM_DURATION),
-          0,
-          1,
-        );
-        if (delayedProgress <= 0) {
-          return;
-        }
-
-        const visibleProgress = Phaser.Math.Clamp(
-          (delayedProgress - CENTER_LIQUID_REVEAL_HOLD_PROGRESS) /
-            (1 - CENTER_LIQUID_REVEAL_HOLD_PROGRESS),
-          0,
-          1,
-        );
-        if (visibleProgress <= 0) {
-          return;
-        }
-
-        ensureStageAdded();
-        const easedProgress = Phaser.Math.Easing.Sine.Out(
-          visibleProgress,
-        );
-        const reveal = Phaser.Math.Linear(startReveal, 1, easedProgress);
-        this.centerLiquidRevealProgress[color] = easedProgress;
-        this.centerLiquidReveal[color] = reveal;
-        this.applyCenterLiquidLayout(this.image.x, this.image.y);
+      update: () => {
+        startRevealTween();
       },
       complete: () => {
+        if (hasCompletedReveal) {
+          this.centerLiquidBaseStageOverride[color] = null;
+          this.centerLiquidRevealStage[color] = null;
+          this.centerLiquidSingleLayerReveal[color] = false;
+          this.applyCenterLiquidLayout(this.image.x, this.image.y);
+          return;
+        }
+
         ensureStageAdded();
-        this.centerLiquidReveal[color] = 1;
-        this.centerLiquidRevealStart[color] = 0;
-        this.centerLiquidRevealProgress[color] = 1;
-        this.centerLiquidBaseStageOverride[color] = null;
-        this.centerLiquidRevealStage[color] = null;
-        this.applyCenterLiquidLayout(this.image.x, this.image.y);
+        startRevealTween();
       },
     };
   }
 
-  updateCenterDropletTextures() {
+  updateCenterDropletTextures(stageOverrides = {}, animate = true) {
     if (
       !this.topDroplet ||
       !this.topDropletFill ||
@@ -1666,11 +1878,13 @@ export class YingYangBottle {
       "black",
       YIN_YANG_RIGHT_DROPLET_START_STAGE,
       YIN_YANG_RIGHT_DROPLET_COVERED_STAGE,
+      stageOverrides.black,
     );
     const rightPercent = this.getDropletFillPercent(
       "white",
       YIN_YANG_LEFT_DROPLET_START_STAGE,
       YIN_YANG_LEFT_DROPLET_COVERED_STAGE,
+      stageOverrides.white,
     );
 
     this.topDroplet.setTexture("yangEmptyDroplet");
@@ -1678,14 +1892,14 @@ export class YingYangBottle {
     this.topDroplet.setAlpha(1);
     this.topDropletFill.setTexture("yangDroplet");
     this.topDropletFill.setAngle(0);
-    this.animateDropletFill("top", this.topDropletFill, leftPercent);
+    this.setDropletFill("top", this.topDropletFill, leftPercent, animate);
 
     this.bottomDroplet.setTexture("yingEmptyDroplet");
     this.bottomDroplet.setAngle(0);
     this.bottomDroplet.setAlpha(1);
     this.bottomDropletFill.setTexture("yingDroplet");
     this.bottomDropletFill.setAngle(0);
-    this.animateDropletFill("bottom", this.bottomDropletFill, rightPercent);
+    this.setDropletFill("bottom", this.bottomDropletFill, rightPercent, animate);
   }
 
   applyCenterCapLayout(color = null) {
@@ -1719,8 +1933,8 @@ export class YingYangBottle {
     });
   }
 
-  getDropletFillPercent(color, startStage, coveredStage) {
-    const fillCount = this.getYinYangStage(color);
+  getDropletFillPercent(color, startStage, coveredStage, stageOverride = null) {
+    const fillCount = stageOverride ?? this.getYinYangStage(color);
 
     if (fillCount < startStage) {
       return 0;
@@ -1730,6 +1944,21 @@ export class YingYangBottle {
     const progressTarget = Math.max(coveredStage - startStage + 1, 1);
 
     return Phaser.Math.Clamp(progressCount / progressTarget, 0, 1);
+  }
+
+  setDropletFill(side, droplet, targetPercent, animate = true) {
+    if (animate) {
+      this.animateDropletFill(side, droplet, targetPercent);
+      return;
+    }
+
+    const target = Phaser.Math.Clamp(targetPercent, 0, 1);
+    this.dropletFillTweens[side]?.stop();
+    this.dropletFillTweens[side] = null;
+    this.dropletFillTarget[side] = target;
+    this.dropletFillPercent[side] = target;
+    droplet.setAlpha(target > 0.001 ? 1 : 0);
+    this.updateDropletFillMask(null, droplet, target);
   }
 
   animateDropletFill(side, droplet, targetPercent) {
@@ -1759,7 +1988,7 @@ export class YingYangBottle {
       from: this.dropletFillPercent[side] ?? 0,
       to: target,
       duration: DROPLET_FILL_ANIMATION_DURATION,
-      ease: "Sine.easeOut",
+      ease: "Sine.easeInOut",
       onUpdate: (tween) => {
         const value = tween.getValue();
         this.dropletFillPercent[side] = value;
@@ -1783,7 +2012,7 @@ export class YingYangBottle {
     const clampedPercent = Phaser.Math.Clamp(percent, 0, 1);
     const frameWidth = droplet.frame.width;
     const frameHeight = droplet.frame.height;
-    const cropHeight = Math.round(frameHeight * clampedPercent);
+    const cropHeight = frameHeight * clampedPercent;
     const cropY = frameHeight - cropHeight;
 
     if (cropHeight <= 0) {
@@ -1952,7 +2181,6 @@ export class YingYangBottle {
           this.stopYinYangBubbles();
           this.stopYinYangPourWave();
           if (!returnToOriginal) {
-            sourceLiquidStack?.setPouring(true);
             updateSourceBottleAttachments();
             onComplete?.();
             return;
@@ -2037,7 +2265,10 @@ export class YingYangBottle {
       onComplete: () => {
         updateSourceBottleAttachments();
         updateTargetBottleAttachments();
-        const targetStreamFill = targetStack?.pushColorForStreamFill(color);
+        const targetStreamFill = targetStack?.pushBatchForStreamFill(
+          color,
+          streamOptions.batchCount ?? 1,
+        );
         if (HOLD_POURING_POSE_FOR_TUNING) {
           this.playPouringStream(
             color,
@@ -2080,7 +2311,6 @@ export class YingYangBottle {
           pourStage,
           () => {
             if (!returnToOriginal) {
-              sourceLiquidStack?.setPouring(true);
               updateSourceBottleAttachments();
               updateTargetBottleAttachments();
               onComplete?.(true);
@@ -2330,8 +2560,10 @@ export class YingYangBottle {
       ease: "Sine.easeInOut",
       onUpdate: (tween) => {
         const t = tween.getValue();
+        const progressBoost =
+          streamOptions.progressBoost ?? POUR_STREAM_PROGRESS_BOOST;
         const streamProgress = Phaser.Math.Clamp(
-          t + POUR_STREAM_PROGRESS_BOOST,
+          t + progressBoost,
           0,
           1,
         );
@@ -2341,29 +2573,44 @@ export class YingYangBottle {
         const shouldRetractStream =
           !streamOptions.keepLineOnComplete &&
           Boolean(sourceStreamDrain?.getRemainingProgress);
-        const revealCompleteAt = 1 - POUR_STREAM_PROGRESS_BOOST;
+        const revealCompleteAt = 1 - progressBoost;
         const targetRetractProgress = Phaser.Math.Clamp(
           (t - revealCompleteAt) / Math.max(1 - revealCompleteAt, 0.001),
           0,
           1,
         );
+        const sourceDrainProgress = streamOptions.syncSourceDrainToStream
+          ? targetBottle
+            ? streamProgress
+            : targetRetractProgress
+          : t;
+        const sourceRemainingProgress =
+          sourceStreamDrain?.getRemainingProgress?.(sourceDrainProgress);
+        const shouldRetractYinYangFromSource =
+          !targetBottle &&
+          streamOptions.syncSourceDrainToStream &&
+          visibleStreamProgress >= 1 &&
+          sourceRemainingProgress < 1;
         const syncedStreamProgress =
           targetBottle && shouldRetractStream
             ? targetRetractProgress > 0
               ? 1 - targetRetractProgress
               : visibleStreamProgress
             : streamOptions.keepLineOnComplete ||
-                streamOptions.syncSourceDrainToStream ||
                 !sourceStreamDrain?.getRemainingProgress
               ? visibleStreamProgress
+              : shouldRetractYinYangFromSource
+                ? sourceRemainingProgress
+              : streamOptions.syncSourceDrainToStream
+                ? visibleStreamProgress
               : Math.min(
                   visibleStreamProgress,
-                  sourceStreamDrain.getRemainingProgress(t),
+                  sourceRemainingProgress,
                 );
         const retractFromSource =
           targetBottle
             ? shouldRetractStream && targetRetractProgress > 0
-            : shouldRetractStream;
+            : shouldRetractYinYangFromSource;
 
         this.drawPouringLine({
           color,
@@ -2382,9 +2629,7 @@ export class YingYangBottle {
         });
         targetStreamFill?.update(t);
         streamOptions.targetYinYangFill?.update(t);
-        sourceStreamDrain?.update(
-          streamOptions.syncSourceDrainToStream ? streamProgress : t,
-        );
+        sourceStreamDrain?.update(sourceDrainProgress);
       },
       onComplete: () => {
         sourceStreamDrain?.update(1);
@@ -2612,7 +2857,7 @@ export class YingYangBottle {
   getWhiteCenterStreamPoints(startX, startY, direction) {
     const firstDrop = this.refCenterStreamDistance(400);
     const finalDrop = this.refCenterStreamDistance(220);
-    const finalSideOffset = direction * this.refCenterStreamDistance(-70);
+    const finalSideOffset = direction * this.refCenterStreamDistance(-80);
     const firstBendDrop = this.refCenterStreamDistance(20);
     const firstBendSideOffset = direction * this.refCenterStreamDistance(-20);
     const points = [{ x: startX, y: startY }];

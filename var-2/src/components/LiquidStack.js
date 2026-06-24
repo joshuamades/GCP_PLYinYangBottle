@@ -12,6 +12,7 @@ const STAGE_FILL_START_PROGRESS = 0.78;
 const STAGE_FILL_EASE_POWER = 1.8;
 const STAGE_DRAIN_END_PROGRESS = 1;
 const STAGE_DRAIN_EASE_POWER = 2.2;
+const STAGE_BATCH_BLEND_OVERLAP = 0.28;
 
 export class LiquidStack {
   constructor(scene, bottle, options = {}) {
@@ -64,6 +65,7 @@ export class LiquidStack {
 
       if (!color) {
         layer.setAlpha(1);
+        layer.setCrop();
         layer.setVisible(false);
         continue;
       }
@@ -72,6 +74,7 @@ export class LiquidStack {
       const stage = index + 1;
       layer.setTexture(this.getTextureKey(color, stage));
       layer.setAlpha(1);
+      layer.setCrop();
       layer.setVisible(true);
     }
 
@@ -150,6 +153,48 @@ export class LiquidStack {
     };
   }
 
+  pushBatchForStreamFill(color, count = 1) {
+    if (!this.canAccept(color)) {
+      return null;
+    }
+
+    const availableSpace = this.maxLayers - this.contents.length;
+    const safeCount = clamp(Math.round(count), 1, availableSpace);
+    const startIndex = this.contents.length;
+    const endIndex = startIndex + safeCount - 1;
+    const fillLayers = [];
+
+    for (let index = 0; index < safeCount; index += 1) {
+      this.contents.push(color);
+    }
+
+    this.renderContents();
+
+    for (let index = startIndex; index <= endIndex; index += 1) {
+      const layer = this.layers[index];
+      if (!layer) {
+        continue;
+      }
+
+      this.scene.tweens.killTweensOf(layer);
+      layer.setAlpha(0);
+      layer.setVisible(true);
+      layer.setCrop(0, layer.height, layer.width, 0);
+      fillLayers.push(layer);
+    }
+
+    return {
+      layers: fillLayers,
+      count: safeCount,
+      update: (progress) => {
+        this.updateStreamBatchFillReveal(fillLayers, progress);
+      },
+      complete: () => {
+        this.completeStreamBatchFillReveal();
+      },
+    };
+  }
+
   popTopForStreamDrain() {
     if (!this.contents.length) {
       return null;
@@ -182,7 +227,7 @@ export class LiquidStack {
     };
   }
 
-  popTopBatchForStreamDrain(count = 1) {
+  popTopBatchForStreamDrain(count = 1, options = {}) {
     if (!this.contents.length) {
       return null;
     }
@@ -190,12 +235,15 @@ export class LiquidStack {
     const safeCount = clamp(Math.round(count), 1, this.contents.length);
     const endIndex = this.contents.length - 1;
     const startIndex = endIndex - safeCount + 1;
-    const color = this.contents[endIndex];
-    const displayLayer = this.layers[endIndex];
-    const hiddenLayers = [];
+    const drainLayers = [];
     let currentProgress = 0;
+    let isComplete = false;
 
     const applyBatchVisual = () => {
+      if (isComplete) {
+        return;
+      }
+
       for (let index = startIndex; index <= endIndex; index += 1) {
         const layer = this.layers[index];
         if (!layer) {
@@ -203,16 +251,11 @@ export class LiquidStack {
         }
 
         this.scene.tweens.killTweensOf(layer);
-        if (index === endIndex) {
-          layer.setTexture(this.getTextureKey(color, endIndex + 1));
-          layer.setAlpha(1);
-          layer.setVisible(true);
-        } else {
-          layer.setAlpha(0);
-          layer.setVisible(false);
-          if (!hiddenLayers.includes(layer)) {
-            hiddenLayers.push(layer);
-          }
+        layer.setTexture(this.getTextureKey(this.contents[index], index + 1));
+        layer.setAlpha(1);
+        layer.setVisible(true);
+        if (!drainLayers.includes(layer)) {
+          drainLayers.push(layer);
         }
         layer.setCrop();
       }
@@ -221,19 +264,39 @@ export class LiquidStack {
     applyBatchVisual();
 
     return {
-      layer: displayLayer,
-      hiddenLayers,
+      layers: drainLayers,
       count: safeCount,
       refresh: () => {
+        if (isComplete) {
+          return;
+        }
+
         applyBatchVisual();
-        this.updateStreamBatchDrainReveal(displayLayer, currentProgress);
+        if (options.fadeOnly) {
+          this.updateStreamBatchFadeDrainReveal(drainLayers, currentProgress);
+        } else {
+          this.updateStreamBatchDrainReveal(drainLayers, currentProgress);
+        }
       },
       update: (progress) => {
+        if (isComplete) {
+          return;
+        }
+
         currentProgress = progress;
-        this.updateStreamBatchDrainReveal(displayLayer, progress);
+        if (options.fadeOnly) {
+          this.updateStreamBatchFadeDrainReveal(drainLayers, progress);
+        } else {
+          this.updateStreamBatchDrainReveal(drainLayers, progress);
+        }
       },
       getRemainingProgress: (progress) => this.getStreamDrainRemainingProgress(progress),
       complete: () => {
+        if (isComplete) {
+          return;
+        }
+
+        isComplete = true;
         this.completeStreamBatchDrainReveal(safeCount);
       },
     };
@@ -246,6 +309,7 @@ export class LiquidStack {
 
       if (!color) {
         layer.setAlpha(1);
+        layer.setCrop();
         layer.setVisible(false);
         continue;
       }
@@ -253,6 +317,7 @@ export class LiquidStack {
       const stage = index + 1;
       layer.setTexture(this.getTextureKey(color, stage));
       layer.setAlpha(1);
+      layer.setCrop();
       layer.setVisible(true);
     }
 
@@ -303,6 +368,31 @@ export class LiquidStack {
     layer.setCrop(0, cropY, layer.width, cropHeight);
   }
 
+  updateStreamBatchFillReveal(layers, progress) {
+    if (!Array.isArray(layers) || !layers.length) {
+      return;
+    }
+
+    const easedProgress = Math.pow(clamp(progress, 0, 1), STAGE_FILL_EASE_POWER);
+    const stepSpan = 1 - STAGE_BATCH_BLEND_OVERLAP;
+    const totalSpan =
+      layers.length <= 1 ? 1 : (layers.length - 1) * stepSpan + 1;
+    const fillPosition = easedProgress * totalSpan;
+
+    layers.forEach((layer, index) => {
+      if (!layer?.visible) {
+        return;
+      }
+
+      const fillProgress = smoothstep(clamp(fillPosition - index * stepSpan, 0, 1));
+      const cropHeight = Math.max(layer.height * fillProgress, 1);
+      const cropY = layer.height - cropHeight;
+
+      layer.setAlpha(fillProgress > 0 ? 1 : 0);
+      layer.setCrop(0, cropY, layer.width, cropHeight);
+    });
+  }
+
   completeStreamFillReveal(index) {
     const layer = this.layers[index];
 
@@ -312,6 +402,10 @@ export class LiquidStack {
 
     layer.setAlpha(1);
     layer.setCrop();
+  }
+
+  completeStreamBatchFillReveal() {
+    this.renderContents();
   }
 
   updateStreamDrainReveal(index, progress) {
@@ -329,17 +423,56 @@ export class LiquidStack {
     layer.setCrop(0, cropY, layer.width, cropHeight);
   }
 
-  updateStreamBatchDrainReveal(layer, progress) {
-    if (!layer?.visible) {
+  updateStreamBatchDrainReveal(layers, progress) {
+    if (!Array.isArray(layers) || !layers.length) {
+      return;
+    }
+
+    const drainProgress = Math.pow(
+      clamp(progress / STAGE_DRAIN_END_PROGRESS, 0, 1),
+      STAGE_DRAIN_EASE_POWER,
+    );
+    const stepSpan = 1 - STAGE_BATCH_BLEND_OVERLAP;
+    const totalSpan =
+      layers.length <= 1 ? 1 : (layers.length - 1) * stepSpan + 1;
+    const drainPosition = drainProgress * totalSpan;
+
+    layers.forEach((layer, index) => {
+      if (!layer?.visible) {
+        return;
+      }
+
+      const reverseIndex = layers.length - 1 - index;
+      const localDrainProgress = smoothstep(
+        clamp(drainPosition - reverseIndex * stepSpan, 0, 1),
+      );
+      const remainingProgress = 1 - localDrainProgress;
+      const cropHeight = Math.max(layer.height * remainingProgress, 1);
+      const cropY = layer.height - cropHeight;
+
+      layer.setAlpha(remainingProgress > 0.01 ? 1 : 0);
+      layer.setCrop(0, cropY, layer.width, cropHeight);
+    });
+  }
+
+  updateStreamBatchFadeDrainReveal(layers, progress) {
+    if (!Array.isArray(layers) || !layers.length) {
       return;
     }
 
     const remainingProgress = this.getStreamDrainRemainingProgress(progress);
-    const cropHeight = Math.max(layer.height * remainingProgress, 1);
-    const cropY = layer.height - cropHeight;
 
-    layer.setAlpha(remainingProgress > 0.01 ? 1 : 0);
-    layer.setCrop(0, cropY, layer.width, cropHeight);
+    layers.forEach((layer) => {
+      if (!layer?.visible) {
+        return;
+      }
+
+      const cropHeight = Math.max(layer.height * remainingProgress, 1);
+      const cropY = layer.height - cropHeight;
+
+      layer.setCrop(0, cropY, layer.width, cropHeight);
+      layer.setAlpha(remainingProgress > 0.01 ? 1 : 0);
+    });
   }
 
   getStreamDrainRemainingProgress(progress) {
@@ -487,4 +620,10 @@ function clampDepth(depth) {
 
 function clamp(value, min, max) {
   return Math.min(Math.max(value, min), max);
+}
+
+function smoothstep(value) {
+  const t = clamp(value, 0, 1);
+
+  return t * t * (3 - 2 * t);
 }
